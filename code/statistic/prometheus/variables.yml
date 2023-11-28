@@ -1,0 +1,3 @@
+ML_MODEL_HOST: localhost
+ML_MODEL_PORT: 8000
+

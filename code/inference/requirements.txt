@@ -1,0 +1,6 @@
+torchvision>=0.15.2
+opencv-python-headless>=4.8.1.78
+urllib3
+numpy
+flask
+boto3
