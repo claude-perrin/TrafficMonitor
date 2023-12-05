@@ -3,4 +3,4 @@ opencv-python-headless>=4.8.1.78
 urllib3
 numpy
 flask
-boto3
+prometheus-client

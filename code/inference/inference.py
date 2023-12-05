@@ -12,7 +12,7 @@ import os
 from flask import Flask, Response
 
 
-model_path = "epoch-4_model.pth"
+model_path = "model/epoch-4_model.pth"
 app = Flask(__name__)
 
 class ObjectDetection:
@@ -24,14 +24,7 @@ class ObjectDetection:
         self.model = self.load_model()
         self.classes = list(CLASSES_TO_IDX.keys())
         self.device = 'cuda' if torch.cuda.is_available() else 'cpu'
-        self.DOCKER_RUN = int(os.getenv("DOCKER_RUNNING"))
-        if self.DOCKER_RUN == "1":
-            print("RUNNING INSIDE OF DOCKER")
-        else:
-            print("RUNNING LOCALLY")
         self.normalized_road_roi_polygon = normalized_road_roi_polygon
-
-
 
     def load_model(self, num_classes=NUMBER_OF_CLASSES):
         model = torchvision.models.detection.fasterrcnn_resnet50_fpn_v2(pretrained=False)
@@ -41,6 +34,7 @@ class ObjectDetection:
         state_dict= torch.load(model_path)
         updated_state = {k.replace("module.", ""): v for k,v in state_dict.items()}
         model.load_state_dict(updated_state)
+        print(f"MODEL from volume: {model_path} is loaded successfuly")
         return model
 
     def __call__(self, img):
@@ -134,13 +128,15 @@ def start_loop():
     image_dim = (600,800)
     normalized_road_roi_polygon = normalize_polygon(image_dim, ROAD_ROI_POLYGON)
     a = ObjectDetection(normalized_road_roi_polygon)
+    camera_ip = os.getenv("CAMERA_IP")
+    prometheus_gateway = os.getenv("PROMETHEUS_GATEWAY")
 
     while True:
         img = get_image(camera_ip)
         output = a(img)
         print("OUTPUT: ", output)
         frame = plot_boxes(normalized_road_roi_polygon, output, img)
-        process_inference_output(output, camera_ip)
+        process_inference_output(output, camera_ip, prometheus_gateway)
         yield stream_to_localhost(frame)
 
 
@@ -165,10 +161,11 @@ def plot_boxes(normalized_road_roi_polygon, results, frame):
                 box_color = BOX_COLOR[label.item()]
                 x1, x2, x3, x4 = int(box[0].item()), int(box[1].item()), int(box[2].item()), int(box[3].item())
                 cv2.rectangle(frame, (x1,x2),(x3,x4), box_color, 2)
-                # cv2.putText(frame, self.__class_to_label(labels[i]), (x1, y1), cv2.FONT_HERSHEY_SIMPLEX, 0.9, bgr, 2)
+                # cv2.putText(frame, __class_to_label(label), (x1, y1), cv2.FONT_HERSHEY_SIMPLEX, 0.9, bgr, 2)
                 # cv2.putText(frame, str(i), (x1, y1), cv2.FONT_HERSHEY_SIMPLEX, 0.9, bgr, 2)
     cv2.polylines(frame, [np.array(normalized_road_roi_polygon)], isClosed=True, color=(32, 32, 128), thickness=2)
     return frame
+
 
 def normalize_polygon(image_dim, ROAD_ROI_POLYGON):
     image_width, image_height = image_dim
@@ -177,19 +174,14 @@ def normalize_polygon(image_dim, ROAD_ROI_POLYGON):
 
 
 def stream_to_localhost(frame):
-    # Encode the frame as JPEG
     _, buffer = cv2.imencode('.jpg', frame)
-
-    # Convert the frame to bytes
     frame_bytes = buffer.tobytes()
-
-    # Yield the frame bytes as bytes
     return (b'--frame\r\n'
            b'Content-Type: image/jpeg\r\n\r\n' + frame_bytes + b'\r\n')
 
-# Create a new object and execute.
 if __name__ == "__main__":
     camera_ip = os.getenv("CAMERA_IP")
+    port = os.getenv("INFERENCE_PORT")
     if camera_ip is None:
-        camera_ip = "https://d357-2a02-a313-23a-9700-a50c-d5fa-7807-1fe4.ngrok-free.app/cam-hi.jpg"
-    app.run(host='0.0.0.0', port=5000, debug=True)
+        print(f"CAMERA_IP is not SPECIFIED: \ncCAMERA_IP: '{camera_ip}'\nPROMETHEUS_GATEWAY: {os.getenv('PROMETHEUS_GATEWAY')}")
+    app.run(host='0.0.0.0', port=port, debug=True)

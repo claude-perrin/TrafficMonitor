@@ -1,0 +1,24 @@
+version: '3'
+services:
+  prometheus:
+    image: prom/prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - /home/ubuntu/bachelor/statistic/prometheus:/etc/prometheus
+
+  pushgateway:
+    image: prom/pushgateway
+    ports:
+      - "9091:9091"
+
+  alertmanager:
+    image: prom/alertmanager:latest
+    restart: unless-stopped
+    container_name: alertmgr
+    ports:
+      - "9093:9093"
+    volumes:
+      - "./alertmanager:/config"
+    command: ["--config.file=/config/alertmanager.yml", "--log.level=debug"]
+

@@ -12,13 +12,12 @@ import torch.utils.data.distributed
 import torchvision
 from torchvision.models.detection.faster_rcnn import FastRCNNPredictor
 from torchvision.ops import nms
-from dataset_helper import save_test_img, save_to_bucket, create_output_bucket
-from dataset_helper import get_train_data_loader, get_test_data_loader
+from training.dataset_helper import save_test_img, save_to_bucket, create_output_bucket, get_train_data_loader, get_test_data_loader
 import json
 from torch.optim.lr_scheduler import StepLR
 
 from torch.nn.functional import pad
-from conf import *
+from conf import * 
 
 def get_object_detection_model(num_classes=NUMBER_OF_CLASSES):
     model = torchvision.models.detection.fasterrcnn_resnet50_fpn_v2(pretrained=True)
@@ -35,7 +34,6 @@ class Main:
         self.s3_session = boto3.client('s3')
         self.image_size = (704,704)
         self.rank = 0
-        # self.output_bucket_name = "vdidyk-test"
         self.use_cuda = args.num_gpus > 0
         self.device = torch.device("cuda" if self.use_cuda else "cpu")
         self.is_distributed = len(self.args.hosts) > 1 and self.args.backend is not None
@@ -84,7 +82,6 @@ class Main:
         for epoch in range(1, self.args.epochs + 1):
             self.train(model, train_loader, optimizer, epoch)
             if (self.rank == 0):
-                print("there should have been test")
                 # self.test(model, test_loader, epoch)
                 model_prefix = f"epoch-{epoch}"
                 model_path = self.save_model(model, self.args.model_dir, model_prefix)
@@ -149,7 +146,6 @@ class Main:
                 # test_loss += total_loss.item()
                 test_loss = 0
                 prediction[idx] = prediction_dict
-                # Saving a frame with truth box on it!!
                 print(f"=====[ epoch {epoch} test loop outside {batch_id}  ] idx: {idx}")
                 name_prefix = f"epoch-{epoch}-batch-{str(batch_id)}-{str(target_dict['idx'])}"
                 print(f"=====[ epoch {epoch} test loop outside {batch_id}  ] name_prefix: {name_prefix}")

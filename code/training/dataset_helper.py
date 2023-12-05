@@ -5,7 +5,7 @@ import os
 import cv2
 import torch
 from torchvision import transforms
-from dataset import ObjectDetectionDataset
+from .dataset import ObjectDetectionDataset
 import datetime
 from conf import *
 

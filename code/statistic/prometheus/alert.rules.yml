@@ -1,0 +1,11 @@
+groups:  
+  - name: Jam
+    rules:
+      - alert: VehiclesThresholdExceeded
+        expr: car_count + bus_count > 6
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Vehicles threshold exceeded"
+          description: "The sum of total vehicles and buses has exceeded 30."

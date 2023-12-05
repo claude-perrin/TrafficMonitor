@@ -1,0 +1,18 @@
+route:
+  receiver: 'Mail Alert'
+  # group_by: [ alertname ]
+  repeat_interval: 1m
+  group_wait: 15s
+  group_interval: 15s
+
+receivers:
+  - name: 'Mail Alert'
+    email_configs:
+      - smarthost: 'smtp.gmail.com:587'
+        auth_username: 'bookexchangerdjango@gmail.com'
+        auth_password: "wgiaxzznubbcugeq"
+        from: 'trafficSystem@gmail.com'
+        to: 'vity5.diduk@gmail.com'
+        headers:
+          subject: 'Prometheus Traffic jam alert'
+
