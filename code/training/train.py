@@ -11,22 +11,37 @@ import torch.utils.data
 import torch.utils.data.distributed
 import torchvision
 from torchvision.models.detection.faster_rcnn import FastRCNNPredictor
-from torchvision.ops import nms
-from training.dataset_helper import save_test_img, save_to_bucket, create_output_bucket, get_train_data_loader, get_test_data_loader
+from helper import save_model, clean_targets, save_test_img, save_to_bucket, create_output_bucket, get_train_data_loader, get_test_data_loader, filter_prediction
 import json
 from torch.optim.lr_scheduler import StepLR
 
-from torch.nn.functional import pad
 from conf import * 
-
-def get_object_detection_model(num_classes=NUMBER_OF_CLASSES):
-    model = torchvision.models.detection.fasterrcnn_resnet50_fpn_v2(pretrained=True)
+from torchvision.models.detection import ssdlite320_mobilenet_v3_large
+from torchvision.models.detection import ssd, ssd300_vgg16, SSD300_VGG16_Weights
+def get_fasterrcnn_detection_model(num_classes=NUMBER_OF_CLASSES):
+    # model = torchvision.models.detection.fasterrcnn_resnet50_fpn_v2(pretrained=True)
+    model = torchvision.models.detection.fasterrcnn_resnet50_fpn(pretrained=True)
     in_features = model.roi_heads.box_predictor.cls_score.in_features
 
     model.roi_heads.box_predictor = FastRCNNPredictor(in_features, num_classes)
 
     return model
 
+def get_ssd_detection_model(num_classes=NUMBER_OF_CLASSES):
+    ssd_model = ssd300_vgg16(weights=SSD300_VGG16_Weights.DEFAULT)
+    # freeze_layers = [
+    #     ssd_model.backbone.features,    # Freeze the VGG16 backbone
+    #     ssd_model.backbone.extra,       # Optionally, freeze extra layers
+    #     ssd_model.anchor_generator,     # Freeze the anchor generator
+    # ]
+    num_anchors = ssd_model.anchor_generator.num_anchors_per_location()
+    out_channels = [512,1024,512,256,256,256]
+    ssd_model.head = ssd.SSDHead(out_channels, num_anchors, num_classes+1)
+    for layer in ssd_model.backbone.features[:-13]:
+        for param in layer.parameters():
+            param.requires_grad = False
+        
+    return ssd_model
 
 class Main:
     def __init__(self, args):
@@ -35,9 +50,16 @@ class Main:
         self.image_size = (704,704)
         self.rank = 0
         self.use_cuda = args.num_gpus > 0
-        self.device = torch.device("cuda" if self.use_cuda else "cpu")
+        # self.device = torch.device("cuda" if self.use_cuda else "cpu")
+        self.device = torch.device("mps")
         self.is_distributed = len(self.args.hosts) > 1 and self.args.backend is not None
 
+    def get_model(self):
+        if self.args.model == "fasterrcnn":
+            model = get_fasterrcnn_detection_model(num_classes=NUMBER_OF_CLASSES).to(self.device)
+        elif self.args.model == "ssd":
+            model = get_ssd_detection_model(num_classes=NUMBER_OF_CLASSES).to(self.device)
+        return model
 
     def setup_distributed_system(self, args):
         # Initialize the distributed environment.
@@ -50,7 +72,6 @@ class Main:
         dist.init_process_group(backend=args.backend, rank=host_rank, world_size=world_size)
         print(f"==========SETUP DIST args.backend {args.backend} ; dist.get_world_size: {dist.get_world_size()}")
 
-
     def run(self):
         if self.is_distributed:
             self.setup_distributed_system(self.args)
@@ -59,16 +80,17 @@ class Main:
         if self.use_cuda:
             torch.cuda.manual_seed(self.args.seed)
         if self.rank == 0:
-            self.output_bucket_name = create_output_bucket(self.s3_session)
+            pass #TODO
+            # self.output_bucket_name = create_output_bucket(self.s3_session)
         kwargs = {"num_workers": 1, "pin_memory": True} if self.use_cuda else {}
+
+        model = self.get_model()
 
         print(f"=====[INFO] Traing loop variables:\n is_distributed: {self.is_distributed}; device: {self.device}\n")
         train_loader = get_train_data_loader(self.args.batch_size, self.args.train_dir, is_distributed=self.is_distributed,  **kwargs)
         test_loader = get_test_data_loader(self.args.test_batch_size, self.args.test_dir, **kwargs)
         print(f"len(train_loader.sampler), len(train_loader.dataset) : {len(train_loader.sampler)} {len(train_loader.dataset)}")
-
-        model = get_object_detection_model(num_classes=NUMBER_OF_CLASSES).to(self.device)
-
+        
         if self.is_distributed and self.use_cuda:
             # multi-machine multi-gpu case
             model = torch.nn.parallel.DistributedDataParallel(model)
@@ -84,8 +106,9 @@ class Main:
             if (self.rank == 0):
                 # self.test(model, test_loader, epoch)
                 model_prefix = f"epoch-{epoch}"
-                model_path = self.save_model(model, self.args.model_dir, model_prefix)
-                self.upload_model_to_s3(model_path, model_path)
+                model_path = save_model(model, self.args.model_dir, model_prefix)
+                #TODO
+                # self.upload_model_to_s3(model_path, model_path)
             scheduler.step()
             
 
@@ -94,17 +117,20 @@ class Main:
         model.train()
         for batch_idx, (data, targets,_) in enumerate(train_loader, 1):
             # Print bounding boxes for debugging
-            print(f"=====[ epoch {epoch} batch {batch_idx}  data: {data}")
-            print(f"=====[ epoch {epoch} batch {batch_idx}  targets: {targets}")
+            # print(f"=====[ epoch {epoch} batch {batch_idx}  data: {data}")
+            # print(f"=====[ epoch {epoch} batch {batch_idx}  targets: {targets}")
+            model.to(self.device)
             data = list(image.to(self.device) for image in data)
             targets = [{k: v.to(self.device) for k, v in t.items()} for t in targets]
             optimizer.zero_grad()
-            print(f"=====[ epoch {epoch} batch {batch_idx}  before model parse")
+            print(f"=====[ epoch {epoch} batch {batch_idx} out of {len(train_loader)}  before model parse")
             output = model(data, targets)
-            print(f"=====[ epoch {epoch} batch {batch_idx}  output of the model: {output}")
+            print(f"=====[ epoch {epoch} batch {batch_idx} output: {output}")
 
-            loss = output["loss_classifier"]
-            loss.backward()
+            total_loss = sum(output.values())
+            total_loss.backward()
+            print(f"=====[ epoch {epoch} batch {batch_idx} loss: {total_loss}")
+
             optimizer.step()
 
     def test(self, model, test_loader, epoch):
@@ -124,9 +150,9 @@ class Main:
             print(f"=====[ epoch {epoch} test loop {batch_id}  ] after output: {prediction}")
             for idx, (prediction_dict, target_dict) in enumerate(zip(prediction, targets)):
                 print(f"=====[ epoch {epoch} test loop {batch_id}  ] BEFORE _clean_targets: {target_dict}")
-                target_dict = self._clean_targets(target_dict)
+                target_dict = clean_targets(target_dict)
                 print(f"=====[ epoch {epoch} test loop {batch_id} ] AFTER _clean_targets: {target_dict}")
-                prediction_dict = self._filter_prediction(predicted_dict=prediction_dict, max_predictions=len(target_dict["labels"]))
+                prediction_dict = filter_prediction(predicted_dict=prediction_dict, max_predictions=len(target_dict["labels"]))
                 print(f"=====[ epoch {epoch} test loop {batch_id}  ] AFTER FILTERING prediction_dict: {prediction_dict}")
 
                 matching_labels = (prediction_dict["labels"] == target_dict["labels"]).sum().item()
@@ -151,59 +177,11 @@ class Main:
                 print(f"=====[ epoch {epoch} test loop outside {batch_id}  ] name_prefix: {name_prefix}")
                 img_pathes.append(save_test_img(original_image[idx], prediction[idx], name_prefix))
                 print(f"===== epoch {epoch} [test loop outside {batch_id}  ] img_pathes: {img_pathes}")
-                break
         accuracy_labels = (correct / correct_labels) * 100
         accuracy_boxes = (test_loss / total_samples)
         print(f' epoch {epoch} Accuracy Labels: {accuracy_labels:.2f}%')
         print(f' epoch {epoch} Loss Boxes: {accuracy_boxes:.2f}%')
         save_to_bucket(img_pathes, self.output_bucket_name, self.s3_session)
-
-
-    def _clean_targets(self, targets):
-        cleaned_targets = {}
-
-        # Filter out invalid boxes
-        valid_boxes_mask = (targets['boxes'].sum(axis=1) > 2)    
-        valid_labels_mask = (targets['labels'] != CLASSES_TO_IDX["background"])
-        valid_area_mask = (targets['area'] >= 1)
-
-        # Combine all conditions using "&"
-        final_mask = valid_boxes_mask & valid_labels_mask & valid_area_mask
-        print(final_mask)
-        # Apply the final mask
-        for key, target_tensor in targets.items():
-            if key == "idx":
-                cleaned_targets[key] = target_tensor
-                continue
-            cleaned_targets[key] = target_tensor[final_mask]
-        return cleaned_targets
-
-
-    def _filter_prediction(self, predicted_dict, max_predictions, iou_threshold=0.7, confidence_threshold=0.15):
-        predicted_boxes, scores = predicted_dict["boxes"], predicted_dict["scores"]
-        nms_indices = nms(predicted_boxes, scores, iou_threshold)
-        predicted_dict = {k: v[nms_indices] for k,v in predicted_dict.items()}
-
-        # mask = predicted_dict["scores"] >= confidence_threshold
-        # predicted_dict = {k: v[mask] for k,v in predicted_dict.items()}
-
-        # Limit the number of predictions
-        filtered_boxes, filtered_labels, filtered_scores = predicted_dict["boxes"],predicted_dict["labels"], predicted_dict["scores"]
-        if len(filtered_boxes) > max_predictions:
-            top_indices = torch.topk(filtered_scores, max_predictions).indices
-            predicted_dict = {k: v[top_indices] for k,v in predicted_dict.items()}
-        elif len(filtered_labels) < max_predictions:
-            n_to_pad = max_predictions - len(filtered_labels)
-            predicted_dict["labels"] = pad(filtered_labels, (0, n_to_pad), value=CLASSES_TO_IDX["background"])
-            print("AFTER\n", predicted_dict["labels"])
-        return predicted_dict
-
-    def save_model(self, model, model_dir, model_prefix):
-        print(f"Saving model: {model} \n\n Saving to model_dir: {model_dir}")
-        path = os.path.join(model_dir, f"{model_prefix}_model.pth")
-        # recommended way from http://pytorch.org/docs/master/notes/serialization.html
-        torch.save(model.cpu().state_dict(), path)
-        return path
 
     def upload_model_to_s3(self, model_path, model_name):
         self.s3_session.upload_file(model_path, self.output_bucket_name, model_name)
@@ -212,7 +190,7 @@ class Main:
 
 def model_fn(model_dir):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    model = get_object_detection_model(num_classes=NUMBER_OF_CLASSES)
+    model = get_fasterrcnn_detection_model(num_classes=NUMBER_OF_CLASSES)
     model = torch.nn.DataParallel(model)
     with open(os.path.join(model_dir, "model.pth"), "rb") as f:
         model.load_state_dict(torch.load(f))
@@ -230,7 +208,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--batch-size",
         type=int,
-        default=8,
+        default=32,
         metavar="N",
         help="input batch size for training (default: 64)",
     )
@@ -244,7 +222,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--epochs",
         type=int,
-        default=3,
+        default=5,
         metavar="N",
         help="number of epochs to train (default: 10)",
     )
@@ -274,21 +252,28 @@ if __name__ == "__main__":
         default=0.03,
         help="gamma parameter used by scheduler",
     )
+    parser.add_argument(
+        "--model",
+        type=str,
+        default="ssd",
+        help="Specify the model that is going to be trained",
+    )
     # # Container environment
     # print("SM_HOSTS: ",os.environ["SM_HOSTS"])
 
-    parser.add_argument("--hosts", type=list, default=json.loads(os.environ["SM_HOSTS"]))
-    parser.add_argument("--current-host", type=str, default=os.environ["SM_CURRENT_HOST"])
-    parser.add_argument("--model-dir", type=str, default=os.environ["SM_MODEL_DIR"])
-    parser.add_argument("--train-dir", type=str, default=os.environ["SM_CHANNEL_TRAIN"])
-    parser.add_argument("--test-dir", type=str, default=os.environ["SM_CHANNEL_TEST"])
-    parser.add_argument("--num-gpus", type=int, default=os.environ["SM_NUM_GPUS"])
-    # parser.add_argument("--hosts", type=list, default="1")
-    # parser.add_argument("--current-host", type=str, default="1")
-    # parser.add_argument("--model-dir", type=str, default=".")
-    # parser.add_argument("--train-dir", type=str, default="../cropped_train")
-    # parser.add_argument("--test-dir", type=str, default="../cropped_valid")
-    # parser.add_argument("--num-gpus", type=int, default=0)
+    # parser.add_argument("--hosts", type=list, default=json.loads(os.environ["SM_HOSTS"]))
+    # parser.add_argument("--current-host", type=str, default=os.environ["SM_CURRENT_HOST"])
+    # parser.add_argument("--model-dir", type=str, default=os.environ["SM_MODEL_DIR"])
+    # parser.add_argument("--train-dir", type=str, default=os.environ["SM_CHANNEL_TRAIN"])
+    # parser.add_argument("--test-dir", type=str, default=os.environ["SM_CHANNEL_TEST"])
+    # parser.add_argument("--num-gpus", type=int, default=os.environ["SM_NUM_GPUS"])
+    
+    parser.add_argument("--hosts", type=list, default="1")
+    parser.add_argument("--current-host", type=str, default="1")
+    parser.add_argument("--model-dir", type=str, default=".")
+    parser.add_argument("--train-dir", type=str, default="../../train_set")
+    parser.add_argument("--test-dir", type=str, default="../../train_set")
+    parser.add_argument("--num-gpus", type=int, default=0)
     print("=====[INFO] Running train loop")
 
     main_class = Main(parser.parse_args())

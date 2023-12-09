@@ -1,5 +1,5 @@
-CLASSES_TO_IDX = {"background": 0, "bus": 1, "cyclist": 2, "pedestrian":3, "vehicle": 4}
-IDX_TO_CLASSES = {0: "background", 1: "bus", 2: "cyclist", 3: "pedestrian", 4: "vehicle"}
+CLASSES_TO_IDX = {"background": 0, "bus": 1, "cyclist": 2, "pedestrian":3, "car": 4}
+IDX_TO_CLASSES = {0: "background", 1: "bus", 2: "cyclist", 3: "pedestrian", 4: "car"}
 COLOR_DICT = {
     'Red': (255, 0, 0),
     'Green': (0, 255, 0),
@@ -8,9 +8,12 @@ COLOR_DICT = {
 }
 BOX_COLOR = {class_logit: color for class_logit, color in zip(list(CLASSES_TO_IDX.values())[1:], COLOR_DICT.values())}
 NUMBER_OF_CLASSES = len(CLASSES_TO_IDX)
-ROAD_ROI_POLYGON = [(0.9993742177712716, 0.9983221476510067),
-                        (0.35469211514440676, 1.0),
-                        (0.24616996245206507, 0.4462402661396575),
-                        (0.24043429286608384, 0.32073429536223916),
-                        (0.2943324155193992, 0.3233532934131736),
-                        (0.9993742177712716, 0.9332809629834899)]
+ROAD_ROI_POLYGON= [(0.16483516483516483, 0.21794871794871795),
+ (0.2857142857142857, 0.46320346320346323),
+ (0.25000000000000006, 0.5256410256410257),
+ (0.33766233766233766, 0.7713675213675214),
+ (0.3945054945054945, 0.7582417582417582),
+ (0.5741758241758242, 1.0),
+ (0.9977527472527473, 0.9981684981684982),
+ (0.9985018315018316, 0.7124542124542125),
+ (0.24038461538461542, 0.19497269497269497)]

@@ -5,9 +5,11 @@ import os
 import cv2
 import torch
 from torchvision import transforms
-from .dataset import ObjectDetectionDataset
+from dataset import ObjectDetectionDataset
 import datetime
+from torchvision.ops import nms
 from conf import *
+from torch.nn.functional import pad
 
 def custom_collate_fn(batch):
     z = datetime.datetime.now()
@@ -101,7 +103,6 @@ def get_test_data_loader(test_batch_size, test_dir,  **kwargs):
         transforms=transform
     )
     print(f"=====[INFO] Got test loader")
-    print(f"============datset[0]" ,dataset[0])
 
     return torch.utils.data.DataLoader(
         dataset,
@@ -173,3 +174,49 @@ def remove_empty_images(files_dir):
             print("remove", image_path)
             os.remove(image_path)
             os.remove(label_file_path)
+
+def filter_prediction(predicted_dict, max_predictions, iou_threshold=0.7, confidence_threshold=0.15):
+    predicted_boxes, scores = predicted_dict["boxes"], predicted_dict["scores"]
+    nms_indices = nms(predicted_boxes, scores, iou_threshold)
+    predicted_dict = {k: v[nms_indices] for k,v in predicted_dict.items()}
+
+    # mask = predicted_dict["scores"] >= confidence_threshold
+    # predicted_dict = {k: v[mask] for k,v in predicted_dict.items()}
+
+    # Limit the number of predictions
+    filtered_boxes, filtered_labels, filtered_scores = predicted_dict["boxes"],predicted_dict["labels"], predicted_dict["scores"]
+    if len(filtered_boxes) > max_predictions:
+        top_indices = torch.topk(filtered_scores, max_predictions).indices
+        predicted_dict = {k: v[top_indices] for k,v in predicted_dict.items()}
+    elif len(filtered_labels) < max_predictions:
+        n_to_pad = max_predictions - len(filtered_labels)
+        predicted_dict["labels"] = pad(filtered_labels, (0, n_to_pad), value=CLASSES_TO_IDX["background"])
+        print("AFTER\n", predicted_dict["labels"])
+    return predicted_dict
+
+
+def clean_targets(targets):
+    cleaned_targets = {}
+
+    # Filter out invalid boxes
+    valid_boxes_mask = (targets['boxes'].sum(axis=1) > 2)    
+    valid_labels_mask = (targets['labels'] != CLASSES_TO_IDX["background"])
+    valid_area_mask = (targets['area'] >= 1)
+
+    # Combine all conditions using "&"
+    final_mask = valid_boxes_mask & valid_labels_mask & valid_area_mask
+    print(final_mask)
+    # Apply the final mask
+    for key, target_tensor in targets.items():
+        if key == "idx":
+            cleaned_targets[key] = target_tensor
+            continue
+        cleaned_targets[key] = target_tensor[final_mask]
+    return cleaned_targets
+
+def save_model(model, model_dir, model_prefix):
+    print(f"Saving model: {model} \n\n Saving to model_dir: {model_dir}")
+    path = os.path.join(model_dir, f"{model_prefix}_model.pth")
+    # recommended way from http://pytorch.org/docs/master/notes/serialization.html
+    torch.save(model.cpu().state_dict(), path)
+    return path

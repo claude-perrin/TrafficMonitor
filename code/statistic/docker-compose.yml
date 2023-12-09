@@ -5,7 +5,7 @@ services:
     ports:
       - "9090:9090"
     volumes:
-      - /home/ubuntu/bachelor/statistic/prometheus:/etc/prometheus
+      - ${STATISTIC_PATH}/prometheus:/etc/prometheus
 
   pushgateway:
     image: prom/pushgateway

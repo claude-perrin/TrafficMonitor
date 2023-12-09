@@ -20,8 +20,11 @@ class ObjectDetectionDataset(Dataset):
         self.image_width, self.image_height = self.get_image_size()
         self.tranformation_probability = 0.7
 
+
+
     def __len__(self):
         return len(self.imgs)
+    
     
     def get_images(self):
         images = []
@@ -83,12 +86,6 @@ class ObjectDetectionDataset(Dataset):
     
 
     def denormalize_box(self, x_min, y_min, width, height):
-        # x_min *= self.width
-        # y_min *= self.height
-        # width *= self.width
-        # height *= self.height
-        # x_max = x_min + width
-        # y_max = y_min + height
         x = float(x_min) * self.image_width
         y = float(y_min) * self.image_height
         width = float(width) * self.image_width
@@ -99,7 +96,6 @@ class ObjectDetectionDataset(Dataset):
         bottom_right_x = x + width / 2
         bottom_right_y = y + height / 2
         return [top_left_x, top_left_y, bottom_right_x, bottom_right_y]
-        # return [x_min, y_min, x_max, y_max]
 
     def _format_targers(self, boxes, labels):
         # convert boxes into a torch.Tensor
@@ -152,14 +148,6 @@ if __name__ == "__main__":
     # Change common_path
     common_path = "/Users/viktor/polsl/bachelor_project/sagemaker/test_set"
     image_size = (640, 480)
-    # name2idx = {"cars": 0, "motorcycle": 1}
 
     train_set = ObjectDetectionDataset(common_path, image_size)
     train_set[0]
-    # dl = DataLoader(train_set, batch_size=1)
-    # print(dl[0])
-    # for i,z,x in dl:
-    #     print(i)
-    # from dataset_helper import plot_img_bbox
-
-    # plot_img_bbox(img, target)
