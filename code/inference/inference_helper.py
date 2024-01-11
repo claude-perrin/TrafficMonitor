@@ -2,15 +2,16 @@ import numpy as np
 import cv2
 import torch
 from torchvision.ops import nms
+from conf import *
 
-def inference_filter_prediction(outputs, normalized_road_roi_polygon, iou_threshold=0.25, confidence_threshold=0.50):
+def inference_filter_prediction(outputs, roi_polygon=None, iou_threshold=0.25, confidence_threshold=0.50):
         cleaned_output = []
         for predicted_dict in outputs:
             mask = predicted_dict['scores'] >= confidence_threshold
             filtered_detections = {k: v[mask] for k, v in predicted_dict.items()}
-            filtered_detections = filter_objects_polygon(filtered_detections, normalized_road_roi_polygon)
+            if roi_polygon != None:
+                filtered_detections = filter_objects_polygon(filtered_detections, roi_polygon)
             if len(filtered_detections['boxes'] != 0):
-                print("AFTER CLEANING ON THE ROAD", filtered_detections)
                 nms_indices = nms(
                     filtered_detections['boxes'],
                     filtered_detections['scores'],
@@ -34,7 +35,6 @@ def filter_objects_polygon(detections, normalized_road_roi_polygon):
             filtered_detections['boxes'] = torch.stack(boxes)
         else:
             filtered_detections = default_return_output()
-        print("Filtered based on  polygon: ", filtered_detections)
         return filtered_detections
 
 def default_return_output():
@@ -60,7 +60,36 @@ def to_grayscale(image):
 def normalize_image(img):
     return img / 255
 
-def normalize_polygon(image_dim, ROAD_ROI_POLYGON):
+def denormalize_polygon(image_dim, ROAD_ROI_POLYGON):
     image_width, image_height = image_dim
     normalized_polygon = [(int(point[0] * image_width), int(point[1] * image_height)) for point in ROAD_ROI_POLYGON]
     return normalized_polygon
+
+
+def plot_boxes(results, frame, denormalized_road_roi_polygon=None):
+    """
+    Takes a frame and its results as input, and plots the bounding boxes and label on to the frame.
+    :param results: contains labels and coordinates predicted by model on the given frame.
+    :param frame: Frame which has been scored.
+    :return: Frame with bounding boxes and labels ploted on it.
+    """
+    label_bg_white = (255, 255, 255)
+    if len(results) != 0:
+        result = results
+        # for result in results:
+        for box, label, score in zip(result['boxes'], result['labels'], result['scores']):
+            label = label.item()
+            score = score.item()
+            box_color = BOX_COLOR[label]
+            box_color = (128, 0, 128)
+            # box_color = (255,255,255)
+            x1, x2, x3, x4 = int(box[0].item()), int(box[1].item()), int(box[2].item()), int(box[3].item())
+            cv2.rectangle(frame, (x1,x2),(x3,x4), box_color, 2)
+            cv2.rectangle(frame, (x1, x2-25), (x1+150, x2), label_bg_white, -1)
+            label_text = f'{class_to_label(label)}: {score:.2f}'
+            cv2.putText(frame, label_text, (x1, x2 - 5), cv2.FONT_HERSHEY_SIMPLEX, 0.9, box_color, 2)
+    cv2.polylines(frame, [np.array(denormalized_road_roi_polygon)], isClosed=True, color=(32, 32, 128), thickness=2)
+    return frame
+
+def class_to_label(label):
+    return IDX_TO_CLASSES[label]

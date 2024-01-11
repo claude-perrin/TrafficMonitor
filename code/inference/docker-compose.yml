@@ -1,17 +1,19 @@
 version: '3'
 services:
   inference:
-    container_name: fasterrcnn_inference
+    container_name: inference
     image: claudeperrin228/inference:${INFERENCE_IMAGE_VERSION}
     build: .
     volumes:
-      - ${INFERENCE_LOCAL_PATH}/model:/app/inference/model
+      - ${MODELS_LOCAL_PATH}:${MODELS_DOCKER_PATH}
     environment:
       PROMETHEUS_GATEWAY: ${PROMETHEUS_GATEWAY}
       CAMERA_IP: ${CAMERA_IP}
       INFERENCE_PORT: ${INFERENCE_PORT}
+      ACTIVE_MODELS: ${ACTIVE_MODELS}
+      MODELS_WEIGHT: ${MODELS_WEIGHT}
     ports:
       - ${INFERENCE_PORT}:${INFERENCE_PORT}
     command:
       - python 
-      - "/app/inference/inference.py" 
+      - inference.py

@@ -2,7 +2,7 @@ groups:
   - name: Jam
     rules:
       - alert: VehiclesThresholdExceeded
-        expr: car_count + bus_count > 6
+        expr: vehicle_count > 10
         for: 1m
         labels:
           severity: critical

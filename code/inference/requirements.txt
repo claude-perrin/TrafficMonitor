@@ -4,3 +4,4 @@ urllib3
 numpy
 flask
 prometheus-client
+requests
