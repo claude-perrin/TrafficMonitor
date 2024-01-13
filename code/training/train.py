@@ -36,12 +36,13 @@ def get_ssd_detection_model(num_classes=NUMBER_OF_CLASSES):
     # ]
     num_anchors = ssd_model.anchor_generator.num_anchors_per_location()
     out_channels = [512,1024,512,256,256,256]
-    ssd_model.head = ssd.SSDHead(out_channels, num_anchors, num_classes+1)
+    ssd_model.head = ssd.SSDHead(out_channels, num_anchors, num_classes)
     for layer in ssd_model.backbone.features[:-13]:
         for param in layer.parameters():
             param.requires_grad = False
         
     return ssd_model
+
 
 class Main:
     def __init__(self, args):
@@ -50,8 +51,8 @@ class Main:
         self.image_size = (704,704)
         self.rank = 0
         self.use_cuda = args.num_gpus > 0
-        # self.device = torch.device("cuda" if self.use_cuda else "cpu")
-        self.device = torch.device("mps")
+        self.device = torch.device("cuda" if self.use_cuda else "cpu")
+        # self.device = torch.device("mps")
         self.is_distributed = len(self.args.hosts) > 1 and self.args.backend is not None
 
     def get_model(self):
@@ -59,6 +60,7 @@ class Main:
             model = get_fasterrcnn_detection_model(num_classes=NUMBER_OF_CLASSES).to(self.device)
         elif self.args.model == "ssd":
             model = get_ssd_detection_model(num_classes=NUMBER_OF_CLASSES).to(self.device)
+        model.to(self.device)
         return model
 
     def setup_distributed_system(self, args):
@@ -81,14 +83,14 @@ class Main:
             torch.cuda.manual_seed(self.args.seed)
         if self.rank == 0:
             pass #TODO
-            # self.output_bucket_name = create_output_bucket(self.s3_session)
+            self.output_bucket_name = create_output_bucket(self.s3_session)
         kwargs = {"num_workers": 1, "pin_memory": True} if self.use_cuda else {}
 
         model = self.get_model()
 
         print(f"=====[INFO] Traing loop variables:\n is_distributed: {self.is_distributed}; device: {self.device}\n")
-        train_loader = get_train_data_loader(self.args.batch_size, self.args.train_dir, is_distributed=self.is_distributed,  **kwargs)
-        test_loader = get_test_data_loader(self.args.test_batch_size, self.args.test_dir, **kwargs)
+        train_loader = get_train_data_loader(self.args.batch_size, self.args.train_dir, is_distributed=self.is_distributed, transform=True, **kwargs)
+        # test_loader = get_test_data_loader(self.args.test_batch_size, self.args.test_dir, **kwargs)
         print(f"len(train_loader.sampler), len(train_loader.dataset) : {len(train_loader.sampler)} {len(train_loader.dataset)}")
         
         if self.is_distributed and self.use_cuda:
@@ -108,7 +110,7 @@ class Main:
                 model_prefix = f"epoch-{epoch}"
                 model_path = save_model(model, self.args.model_dir, model_prefix)
                 #TODO
-                # self.upload_model_to_s3(model_path, model_path)
+                self.upload_model_to_s3(model_path, model_path)
             scheduler.step()
             
 
@@ -119,7 +121,6 @@ class Main:
             # Print bounding boxes for debugging
             # print(f"=====[ epoch {epoch} batch {batch_idx}  data: {data}")
             # print(f"=====[ epoch {epoch} batch {batch_idx}  targets: {targets}")
-            model.to(self.device)
             data = list(image.to(self.device) for image in data)
             targets = [{k: v.to(self.device) for k, v in t.items()} for t in targets]
             optimizer.zero_grad()

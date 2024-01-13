@@ -18,7 +18,7 @@ class ObjectDetectionDataset(Dataset):
         self.allowed_image_formats = ["png", "jpeg", "jpg"]
         self.imgs = self.get_images()
         self.image_width, self.image_height = self.get_image_size()
-        self.tranformation_probability = 0.7
+        self.tranformation_probability = 0.5
 
     def __len__(self):
         return len(self.imgs)
@@ -38,7 +38,6 @@ class ObjectDetectionDataset(Dataset):
         img_name = self.imgs[0]
         image_path = os.path.join(self.files_dir, img_name)
         img = cv2.imread(image_path).shape
-        
         return (img[0], img[1])
 
     

@@ -22,26 +22,26 @@ class ObjectDetection:
     Class implements FasterRcnn model to make inferences.
     """
 
-    def __init__(self, normalized_road_roi_polygon, models_name, models_weight):
+    def __init__(self, normalized_road_roi_polygon, models_name, models_path):
         self.models_name = models_name.split()
-        self.models_weight = models_weight.split()
+        self.models_path = models_path
+        self.number_of_classes = NUMBER_OF_CLASSES
         self.models = self.load_models()
         self.classes = list(CLASSES_TO_IDX.keys())
-        self.number_of_classes = NUMBER_OF_CLASSES
         self.device = 'cuda' if torch.cuda.is_available() else 'cpu'
         self.normalized_road_roi_polygon = normalized_road_roi_polygon
     
     def load_models(self):
         models = []
         for model_name in self.models_name:
-            model_path = model_name+".pth"
+            model_path = self.models_path + "/"+model_name+".pth"
             if model_name == "ssd":
                 models.append(self.load_ssd(model_path))
-            elif model_name == "fasterrcnn1":
+            elif model_name == "Good_FasterRcnn_V1_model":
                 models.append(self.load_fasterrcnn1(model_path))
             elif model_name == "fasterrcnn2":
                 models.append(self.load_fasterrcnn2(model_path))
-        return models
+        return models[0]
 
     def load_ssd(self, model_path):
         ssd_model = ssd300_vgg16(weights=False)
@@ -85,20 +85,21 @@ class ObjectDetection:
         grayscale = preprocess_image(img)
         grayscale = grayscale.unsqueeze(0)
         output = self.inference(grayscale)
-        output = inference_filter_prediction(output, self.normalized_road_roi_polygon)
+        output = inference_filter_prediction(output, roi_polygon=self.normalized_road_roi_polygon, confidence_threshold=0.7)
         return output
 
 
     def inference(self, input_data):
         futures = []
-        with concurrent.futures.ThreadPoolExecutor() as executor:
-            for model in self.models:
-                output = executor.submit(self.parse_data(model, input_data))
-                print(f"{model} Inference output: ", output)
-                futures.append(output)
-        results = [future.result() for future in concurrent.futures.as_completed(futures)]
+        # with concurrent.futures.ThreadPoolExecutor() as executor:
+        # for model in self.models:
+        result = self.parse_data(self.models, input_data)
+        #         output = executor.submit(self.parse_data(model, input_data))
+        #         print(f"{model} Inference output: ", output)
+        #         futures.append(output)
+        # results = [future.result() for future in concurrent.futures.as_completed(futures)]
         
-        return futures
+        return result
     
     def parse_data(self, model, input_data):
         model.eval()
@@ -162,9 +163,8 @@ def start_loop():
     camera_ip = os.getenv("CAMERA_IP")
     prometheus_gateway = os.getenv("PROMETHEUS_GATEWAY")
     models_name = os.getenv("ACTIVE_MODELS")
-    models_weight = os.getenv("MODELS_WEIGHT")
-
-    detector = ObjectDetection(normalized_road_roi_polygon, models_name, models_weight)
+    models_path= os.getenv("MODELS_DOCKER_PATH")
+    detector = ObjectDetection(normalized_road_roi_polygon, models_name, models_path)
 
     while True:
         img = get_image(camera_ip)
@@ -193,7 +193,7 @@ def stream_to_localhost(frame):
 if __name__ == "__main__":
     port = os.getenv("INFERENCE_PORT")
     try:
-        if check_consistancy():
-            app.run(host='0.0.0.0', port=port, debug=True)
+        # if check_consistancy():
+        app.run(host='0.0.0.0', port=port, debug=True)
     except InferenceSetupException as e:
         print(e)

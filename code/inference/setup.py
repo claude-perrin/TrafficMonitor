@@ -14,17 +14,16 @@ def check_models_volume(model_dir_name):
         return True
     raise InferenceSetupException(f"Directory {model_dir_name} does not exist.. \nExiting the inference")
 
-def check_models_presence(model_dir_name, models_name):
-    models = models_name.split()
-    for model_name in models:
-        if not os.path.isfile(f"model_dir_name/{model_name}.pth"):
-            raise InferenceSetupException(f"Model: {model_name} does not exist.. inside {model_dir_name}\nExiting the inference")
+def check_models_presence(model_dir_name, model_name):
+    # for model_name in models:
+    if not os.path.isfile(f"{model_dir_name}/{model_name}.pth"):
+        raise InferenceSetupException(f"Model: {model_name} does not exist.. inside {model_dir_name}\nExiting the inference")
     return True
 
-def check_weight_consistency(models_name, models_weight):
-    if len(models_name.split()) != len(models_weight):
-        raise InferenceSetupException(f"Inconsistency in specified models : {models_name} and weights {models_weight}..\nExiting the inference")
-    return True
+# def check_weight_consistency(models_name, models_weight):
+#     if len(models_name) != len(models_weight):
+#         raise InferenceSetupException(f"Inconsistency in specified models : {models_name} and weights {models_weight}..\nExiting the inference")
+#     return True
 
 def get_available_models(model_dir_name):
     available_models = os.path.listdir(model_dir_name)
@@ -51,9 +50,9 @@ def check_consistancy():
     try:
         check_models_volume(model_dir_name)
         check_models_presence(model_dir_name, models_name)
-        check_weight_consistency(models_name, models_weight)
-        check_endpoint(camera_endpoint)
-        check_endpoint(prometheus_gateway_endpoint)
+        # check_weight_consistency(models_name, models_weight)
+        # check_endpoint(camera_endpoint)
+        # check_endpoint(prometheus_gateway_endpoint)
     except InferenceSetupException as e:
         raise InferenceSetupException(e)
     return True

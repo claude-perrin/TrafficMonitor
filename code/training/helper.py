@@ -71,10 +71,11 @@ def pad_tensors(tensor_list, padding_value):
     return result_tensor
 
 
-def get_train_data_loader(batch_size, training_dir, is_distributed=False, **kwargs):
-    print(f"=====[INFO] Get train data loader training_dir: {training_dir}")
+def get_train_data_loader(batch_size, training_dir, transform=None, is_distributed=False, **kwargs):
+    print(f"=====[INFO] Get train data loader training_dir: ")
 
-    transform = transforms.Compose([ transforms.RandomHorizontalFlip(), transforms.ToTensor()])
+    if transform:
+        transform = transforms.Compose([ transforms.RandomHorizontalFlip(), transforms.ToTensor()])
 
     dataset = ObjectDetectionDataset(
         training_dir,
@@ -83,7 +84,7 @@ def get_train_data_loader(batch_size, training_dir, is_distributed=False, **kwar
     train_sampler = (
         torch.utils.data.distributed.DistributedSampler(dataset) if is_distributed else None
     )
-    print(f"=====[INFO] Got dataset {dataset}")
+    print(f"=====[INFO] Got dataset")
 
     return torch.utils.data.DataLoader(
         dataset,
@@ -96,11 +97,9 @@ def get_train_data_loader(batch_size, training_dir, is_distributed=False, **kwar
 
 
 def get_test_data_loader(test_batch_size, test_dir,  **kwargs):
-    print(f"=====[INFO] Get test data loader test_dir: {test_dir}")
-    transform = transforms.Compose([ transforms.RandomHorizontalFlip(), transforms.ToTensor()])
+    print(f"=====[INFO] Get test data loader test_dir:")
     dataset = ObjectDetectionDataset(
         test_dir,
-        transforms=transform
     )
     print(f"=====[INFO] Got test loader")
 

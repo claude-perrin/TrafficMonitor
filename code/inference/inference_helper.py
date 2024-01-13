@@ -75,7 +75,7 @@ def plot_boxes(results, frame, denormalized_road_roi_polygon=None):
     """
     label_bg_white = (255, 255, 255)
     if len(results) != 0:
-        result = results
+        result = results[0]
         # for result in results:
         for box, label, score in zip(result['boxes'], result['labels'], result['scores']):
             label = label.item()
