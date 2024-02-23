@@ -7,7 +7,10 @@ we'll use virtualization, ensemble learning, and Continuous Integration/Continuo
 The data we gather will help urban planners understand traffic patterns in different road sections. Our solution is affordable, easy to maintain, and has minimal delays.
 
 
-![image](https://github.com/claude-perrin/TrafficMonitor/assets/architectute)
+![image](https://github.com/claude-perrin/TrafficMonitor/blob/master/assets/architecture.png)
+![image](https://github.com/claude-perrin/TrafficMonitor/blob/master/assets/ensemble_1_complex.png)
+![image](https://github.com/claude-perrin/TrafficMonitor/blob/master/assets/ensemble_1_simple.png)
+![image](https://github.com/claude-perrin/TrafficMonitor/blob/master/assets/prometheus.png)
 
 
 
